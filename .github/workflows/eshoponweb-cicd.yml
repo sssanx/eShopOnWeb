@@ -1,0 +1,85 @@
+name: eShopOnWeb CI/CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      resourceGroup:
+        description: 'Resource Group'
+        required: true
+        default: 'rg-eshoponweb-westeurope'
+      location:
+        description: 'Azure Region'
+        required: true
+        default: 'westeurope'
+      webAppName:
+        description: 'Web App Name'
+        required: true
+        default: 'devops-webapp-westeurope-44518203'
+
+env:
+  AZURE_WEBAPP_PACKAGE_PATH: './published'
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      
+      - name: Build
+        run: dotnet build src/Web/Web.csproj --configuration Release
+      
+      - name: Publish
+        run: dotnet publish src/Web/Web.csproj --configuration Release --output ./published
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapp
+          path: ./published
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: webapp
+          path: ./published
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Create Resource Group
+        run: |
+          az group create --name ${{ github.event.inputs.resourceGroup }} --location ${{ github.event.inputs.location }}
+      
+      - name: Create App Service Plan
+        run: |
+          az appservice plan create \
+            --name plan-${{ github.event.inputs.webAppName }} \
+            --resource-group ${{ github.event.inputs.resourceGroup }} \
+            --sku B1 \
+            --is-linux
+      
+      - name: Create Web App
+        run: |
+          az webapp create \
+            --name ${{ github.event.inputs.webAppName }} \
+            --resource-group ${{ github.event.inputs.resourceGroup }} \
+            --plan plan-${{ github.event.inputs.webAppName }} \
+            --runtime "DOTNETCORE:8.0"
+      
+      - name: Deploy to Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ github.event.inputs.webAppName }}
+          package: ./published
