@@ -72,7 +72,7 @@ jobs:
           az appservice plan create \
             --name plan-${{ github.event.inputs.webAppName }} \
             --resource-group ${{ github.event.inputs.resourceGroup }} \
-            --sku B1 \
+            --sku F1 \
             --is-linux
 
       - name: Create Web App
